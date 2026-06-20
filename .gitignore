@@ -17,4 +17,4 @@ __pycache__/
 .DS_Store
 
 # Environment variables
-.env
+.envdata/*.db
