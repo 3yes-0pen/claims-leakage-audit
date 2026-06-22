@@ -1,14 +1,6 @@
 """
 utils/chart_builders.py
-
 Shared Plotly figure builders for both dashboards.
-Every function takes a pre-loaded DataFrame and returns a go.Figure
-(or a filtered DataFrame for the triage panel).
-
-Dashboard pages stay thin:
-    from utils.chart_builders import build_waterfall
-    fig = build_waterfall(df)
-    st.plotly_chart(fig, use_container_width=True)
 """
 
 import pandas as pd
@@ -16,9 +8,6 @@ import plotly.graph_objects as go
 import plotly.express as px
 
 # ── Shared Color Palettes ────────────────────────────────────────────────────
-# Single source of truth — imported by both dashboard apps.
-# Pulled from notebooks: PAYER_COLORS from NB07, SEGMENT_COLORS + carc_colors from NB06.
-
 PAYER_COLORS = {
     "medi_cal_managed_care":  "#e63946",
     "commercial_ppo":         "#2a9d8f",
@@ -52,23 +41,18 @@ INTERVENTION_COLORS = {
     "Credentialing Renewal (CO-B7)":  "#e9c46a",
 }
 
-# Quadrant thresholds for Intervention Matrix — match NB05 Cell 2 parameters
 COMPLEXITY_THRESHOLD = 2.5
 RECOVERY_THRESHOLD   = 150_000
+
+
+def _fmt_label(raw: str) -> str:
+    """Format underscore-separated identifiers for chart display."""
+    return raw.replace("_", " ").title()
 
 
 # ── Panel 1: Revenue Leakage Waterfall ──────────────────────────────────────
 
 def build_waterfall(df: pd.DataFrame) -> go.Figure:
-    """
-    Build the revenue leakage waterfall chart.
-
-    Data: waterfall_summary.parquet
-    Columns used: stage_label, stage_order, amount, measure_type
-
-    The ncr_overall_pct column is a KPI value, not a bar —
-    pull it in the dashboard page with df["ncr_overall_pct"].iloc[0].
-    """
     df = df.sort_values("stage_order")
 
     fig = go.Figure(go.Waterfall(
@@ -80,16 +64,14 @@ def build_waterfall(df: pd.DataFrame) -> go.Figure:
         text=[f"${abs(v):,.0f}" for v in df["amount"]],
         textposition="outside",
         connector={"line": {"color": "#6b7280", "dash": "dot", "width": 1}},
-        increasing={"marker": {"color": "#06d6a0"}},   # appeal recovery
-        decreasing={"marker": {"color": "#e63946"}},   # contractual adj, denials
-        totals={"marker": {"color": "#457b9d"}},        # subtotal bars
+        increasing={"marker": {"color": "#06d6a0"}},
+        decreasing={"marker": {"color": "#e63946"}},
+        totals={"marker": {"color": "#457b9d"}},
     ))
 
     fig.update_layout(
-        title=dict(
-            text="Revenue Leakage Waterfall — Gross Billed to Final Net Position",
-            font=dict(size=15, color="#1f2937"),
-        ),
+        title=dict(text="Revenue Leakage Waterfall — Gross Billed to Final Net Position",
+                   font=dict(size=15, color="#1f2937")),
         yaxis=dict(tickformat="$,.0f", gridcolor="#f3f4f6"),
         xaxis=dict(tickfont=dict(size=11)),
         plot_bgcolor="rgba(0,0,0,0)",
@@ -98,11 +80,10 @@ def build_waterfall(df: pd.DataFrame) -> go.Figure:
         showlegend=False,
         margin=dict(t=60, b=40, l=80, r=40),
     )
-
     return fig
 
 
-# ── Panel 2: Failure Node × Payer / Provider Heatmap ────────────────────────
+# ── Panel 2: Failure Node Heatmap ───────────────────────────────────────────
 
 def build_heatmap(
     df: pd.DataFrame,
@@ -110,12 +91,6 @@ def build_heatmap(
     title: str,
     colorscale: str = "YlOrRd",
 ) -> go.Figure:
-    """
-    Build a failure-node heatmap for either payer or provider dimension.
-
-    Data: failure_node_payer_heatmap.parquet   → index_col="payer_id"
-          failure_node_provider_heatmap.parquet → index_col="practice_name"
-    """
     pivot = df.pivot_table(
         index=index_col,
         columns="upstream_failure_node",
@@ -123,13 +98,14 @@ def build_heatmap(
         aggfunc="sum",
     ).fillna(0)
 
-    # Format column labels: prior_authorization → Prior Authorization
-    col_labels = [c.replace("_", " ").title() for c in pivot.columns]
+    # Format both axes — strip underscores for clean display
+    col_labels = [_fmt_label(c) for c in pivot.columns]
+    row_labels  = [_fmt_label(r) for r in pivot.index.tolist()]
 
     fig = go.Figure(go.Heatmap(
         z=pivot.values,
         x=col_labels,
-        y=pivot.index.tolist(),
+        y=row_labels,
         colorscale=colorscale,
         text=[[f"${v:,.0f}" for v in row] for row in pivot.values],
         texttemplate="%{text}",
@@ -142,10 +118,6 @@ def build_heatmap(
         ),
     ))
 
-    # Auto-darken cell text for low values (light cells)
-    # Plotly doesn't support conditional text color natively,
-    # so white text + dark colorscale reads cleanly for most cells.
-
     fig.update_layout(
         title=dict(text=title, font=dict(size=14, color="#1f2937")),
         xaxis=dict(tickangle=-30, tickfont=dict(size=10)),
@@ -155,7 +127,6 @@ def build_heatmap(
         height=420,
         margin=dict(t=60, b=80, l=160, r=40),
     )
-
     return fig
 
 
@@ -167,36 +138,23 @@ def filter_triage(
     carc_codes: list[str] | None = None,
     provider: str | None = None,
 ) -> pd.DataFrame:
-    """
-    Apply sidebar filters to the triage queue and return a display-ready DataFrame.
-
-    The returned df is passed directly to st.dataframe().
-    Sorting (priority_score DESC) is preserved from the parquet file.
-
-    Dashboard page handles st.selectbox / st.multiselect widgets;
-    this function just applies the filter logic in one place.
-    """
     filtered = df.copy()
 
     if payer and payer != "All":
         filtered = filtered[filtered["payer_id"] == payer]
-
     if carc_codes:
         filtered = filtered[filtered["carc_code"].isin(carc_codes)]
-
     if provider and provider != "All":
         filtered = filtered[filtered["practice_name"] == provider]
 
-    # Format columns for display
     display_cols = [
         "priority_score", "dollars_at_risk", "days_remaining_window",
         "practice_name", "payer_id", "carc_code",
         "upstream_failure_node", "recommended_action",
     ]
     out = filtered[display_cols].copy()
-
-    out["priority_score"]     = out["priority_score"].round(1)
-    out["dollars_at_risk"]    = out["dollars_at_risk"].apply(lambda v: f"${v:,.0f}")
+    out["priority_score"]  = out["priority_score"].round(1)
+    out["dollars_at_risk"] = out["dollars_at_risk"].apply(lambda v: f"${v:,.0f}")
 
     out = out.rename(columns={
         "priority_score":        "Priority Score",
@@ -208,19 +166,12 @@ def filter_triage(
         "upstream_failure_node": "Failure Node",
         "recommended_action":    "Action",
     })
-
     return out
 
 
-# ── Panel 4: Denial Pattern Fingerprint by Specialty ────────────────────────
+# ── Panel 4: Denial Pattern Fingerprint ─────────────────────────────────────
 
 def build_fingerprint(df: pd.DataFrame) -> go.Figure:
-    """
-    Build the 100% stacked horizontal bar showing CARC composition by specialty.
-
-    Data: denial_fingerprint.parquet
-    Columns: patient_segment, carc_code, denial_count
-    """
     pivot = df.pivot_table(
         index="patient_segment",
         columns="carc_code",
@@ -231,7 +182,6 @@ def build_fingerprint(df: pd.DataFrame) -> go.Figure:
     pivot_pct = pivot.div(pivot.sum(axis=1), axis=0) * 100
 
     fig = go.Figure()
-
     for carc in pivot_pct.columns:
         vals  = pivot_pct[carc].values
         color = CARC_COLORS.get(carc, "#cccccc")
@@ -255,16 +205,10 @@ def build_fingerprint(df: pd.DataFrame) -> go.Figure:
 
     fig.update_layout(
         barmode="stack",
-        title=dict(
-            text="Denial Pattern Fingerprint by Specialty",
-            font=dict(size=14, color="#1f2937"),
-        ),
-        xaxis=dict(
-            title="% of Denials by CARC Code",
-            ticksuffix="%",
-            range=[0, 100],
-            gridcolor="#f3f4f6",
-        ),
+        title=dict(text="Denial Pattern Fingerprint by Specialty",
+                   font=dict(size=14, color="#1f2937")),
+        xaxis=dict(title="% of Denials by CARC Code", ticksuffix="%",
+                   range=[0, 100], gridcolor="#f3f4f6"),
         yaxis=dict(tickfont=dict(size=11)),
         legend=dict(title="CARC Code", orientation="v"),
         plot_bgcolor="rgba(0,0,0,0)",
@@ -272,7 +216,6 @@ def build_fingerprint(df: pd.DataFrame) -> go.Figure:
         height=420,
         margin=dict(t=60, b=60, l=140, r=40),
     )
-
     return fig
 
 
@@ -282,18 +225,6 @@ def build_intervention_matrix(
     df: pd.DataFrame,
     complexity_overrides: dict | None = None,
 ) -> go.Figure:
-    """
-    Build the effort-vs-return scatter plot (Intervention Matrix).
-
-    Data: intervention_matrix.parquet
-    Columns: intervention, provider, failure_node,
-             denials_avoided, dollars_recovered, complexity, value_type
-
-    complexity_overrides: dict of {intervention_name: slider_value}
-        Passed from the dashboard page's st.slider widgets.
-        Overrides the default complexity score from the parquet file.
-        If None, uses stored default values.
-    """
     plot_df = df.copy()
 
     if complexity_overrides:
@@ -303,7 +234,6 @@ def build_intervention_matrix(
     marker_symbols = {"Recovery": "circle", "Prevention": "triangle-up"}
 
     fig = go.Figure()
-
     for _, row in plot_df.iterrows():
         name   = row["intervention"]
         color  = INTERVENTION_COLORS.get(name, "#6b7280")
@@ -314,13 +244,8 @@ def build_intervention_matrix(
             x=[row["complexity"]],
             y=[row["dollars_recovered"]],
             mode="markers+text",
-            marker=dict(
-                size=size,
-                color=color,
-                symbol=symbol,
-                line=dict(color="white", width=2),
-                opacity=0.88,
-            ),
+            marker=dict(size=size, color=color, symbol=symbol,
+                        line=dict(color="white", width=2), opacity=0.88),
             text=[f"  {name}<br>  ${row['dollars_recovered']:,.0f}"],
             textposition="middle right",
             textfont=dict(size=9, color="#374151"),
@@ -335,48 +260,35 @@ def build_intervention_matrix(
             ),
         ))
 
-    # Quadrant dividers
-    fig.add_vline(
-        x=COMPLEXITY_THRESHOLD,
-        line_dash="dash", line_color="#9ca3af", opacity=0.6,
-    )
-    fig.add_hline(
-        y=RECOVERY_THRESHOLD,
-        line_dash="dash", line_color="#9ca3af", opacity=0.6,
-    )
+    fig.add_vline(x=COMPLEXITY_THRESHOLD, line_dash="dash",
+                  line_color="#9ca3af", opacity=0.6)
+    fig.add_hline(y=RECOVERY_THRESHOLD, line_dash="dash",
+                  line_color="#9ca3af", opacity=0.6)
 
-    # Quadrant labels (fixed to corners via paper coordinates)
+    # Bold, darker quadrant labels
     quadrant_labels = [
-        dict(x=0.02, y=0.97, text="FUND FIRST",      xanchor="left",  yanchor="top"),
-        dict(x=0.98, y=0.97, text="PLAN CAREFULLY",  xanchor="right", yanchor="top"),
-        dict(x=0.02, y=0.03, text="QUICK WINS",      xanchor="left",  yanchor="bottom"),
-        dict(x=0.98, y=0.03, text="DEPRIORITIZE",    xanchor="right", yanchor="bottom"),
+        dict(x=0.02, y=0.97, text="<b>FUND FIRST</b>",
+             xanchor="left",  yanchor="top"),
+        dict(x=0.98, y=0.97, text="<b>PLAN CAREFULLY</b>",
+             xanchor="right", yanchor="top"),
+        dict(x=0.02, y=0.03, text="<b>QUICK WINS</b>",
+             xanchor="left",  yanchor="bottom"),
+        dict(x=0.98, y=0.03, text="<b>DEPRIORITIZE</b>",
+             xanchor="right", yanchor="bottom"),
     ]
     annotations = [
-        dict(
-            xref="paper", yref="paper", showarrow=False,
-            font=dict(color="#9ca3af", size=9),
-            **lbl,
-        )
+        dict(xref="paper", yref="paper", showarrow=False,
+             font=dict(color="#4b5563", size=10), **lbl)
         for lbl in quadrant_labels
     ]
 
     fig.update_layout(
-        title=dict(
-            text="Intervention Prioritization Matrix",
-            font=dict(size=14, color="#1f2937"),
-        ),
-        xaxis=dict(
-            title="Implementation Complexity (1 = Low → 5 = High)",
-            range=[0.5, 5.5],
-            gridcolor="#f3f4f6",
-            dtick=1,
-        ),
-        yaxis=dict(
-            title="Expected Dollar Impact — Recovery or Prevention ($)",
-            tickformat="$,.0f",
-            gridcolor="#f3f4f6",
-        ),
+        title=dict(text="Intervention Prioritization Matrix",
+                   font=dict(size=14, color="#1f2937")),
+        xaxis=dict(title="Implementation Complexity (1 = Low → 5 = High)",
+                   range=[0.5, 5.5], gridcolor="#f3f4f6", dtick=1),
+        yaxis=dict(title="Expected Dollar Impact ($)",
+                   tickformat="$,.0f", gridcolor="#f3f4f6"),
         annotations=annotations,
         legend=dict(title="Intervention"),
         plot_bgcolor="rgba(0,0,0,0)",
@@ -384,5 +296,4 @@ def build_intervention_matrix(
         height=560,
         margin=dict(t=60, b=60, l=100, r=200),
     )
-
     return fig
