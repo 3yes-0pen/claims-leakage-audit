@@ -7,8 +7,8 @@ how denial pattern analysis, failure node attribution, and intervention modeling
 the clinical and operational signals hidden inside standard RCM data.
 
 **Live dashboards:**
-- [Full Analytical Suite (5-panel)](https://your-5panel-url.streamlit.app) ← update after deploy
-- [Executive Summary (3-panel)](https://your-3panel-url.streamlit.app) ← update after deploy
+- [Full Analytical Suite (5-panel)](https://claims-leakage-audit-5panel.streamlit.app/) 
+- [Executive Summary (3-panel)](https://claims-leakage-audit-3panel.streamlit.app)
 
 ---
 
