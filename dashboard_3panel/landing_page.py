@@ -27,7 +27,7 @@ heatmap_df   = load_heatmap_payer()
 fp_df        = load_fingerprint()
 
 # ── Header ───────────────────────────────────────────────────────────────────
-st.title("Claims Leakage Audit Engine")
+st.title("Claims Leakage Audit")
 st.markdown(
     "**A strategic view of revenue integrity across three lenses: "
     "financial performance, operational failure, and clinical signal.** "

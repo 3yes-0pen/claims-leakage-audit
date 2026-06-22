@@ -28,7 +28,7 @@ triage_df    = load_triage_queue()
 matrix_df    = load_intervention_matrix()
 
 # ── Header ───────────────────────────────────────────────────────────────────
-st.title("Claims Leakage Audit Engine")
+st.title("Claims Leakage Audit")
 st.markdown(
     "**Every denied dollar has a birth certificate.** "
     "This dashboard traces it -- and answers specific questions related "
