@@ -6,6 +6,14 @@ A healthcare revenue cycle analytics project built on synthetic claims data — 
 how denial pattern analysis, failure node attribution, and intervention modeling can surface
 the clinical and operational signals hidden inside standard RCM data.
 
+**The Purpose of this Project**
+Practice and Exercise on the nuances of insight within the entire Claims, Denials, Remittance cycle. 
+
+Some questions I had that inspired the structure:
+- From different perspectives of this same data, what is valuable to see?
+- What pieces of information are actually meaningful in this domain?
+- What structures and systems conceptualize the solutions and improve the live diagnostics?
+
 **Live dashboards:**
 - [Full Analytical Suite (5-panel)](https://claims-leakage-audit-5panel.streamlit.app/) 
 - [Executive Summary (3-panel)](https://claims-leakage-audit-3panel.streamlit.app)
